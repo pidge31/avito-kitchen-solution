@@ -60,20 +60,29 @@ docker compose down               # остановить; данные сохр�
 ## Архитектура: C4 Level 2
 
 ```mermaid
-C4Container
-    title Avito Kitchen - containers
-    Container(web, "Web client (planned)", "Browser", "Catalog, basket, order tracking")
-    Container(gateway, "Platform gateway (external)", "Existing platform", "Verified session to X-User-ID; private gateway key")
-    System_Boundary(platform, "Avito Kitchen") {
-        Container(api, "Platform API", "Go, net/http", "Catalog, checkout, stock reservations, expiration worker")
-        ContainerDb(db, "Database", "PostgreSQL 17", "Restaurants, menu, inventory, orders, history")
-    }
-    Container(pos, "Restaurant demo", "Go", "Menu synchronization and order processing")
-    Rel(web, gateway, "Customer requests with platform session", "HTTPS JSON")
-    Rel(gateway, api, "Customer API, X-User-ID and X-Gateway-Key", "HTTP JSON in demo; HTTPS outside trusted network")
-    Rel(pos, api, "Partner API with issued key", "HTTP JSON, polling")
-    Rel(api, db, "Transactional reads and writes", "SQL via pgx")
+flowchart TB
+    web["Web client<br/>Browser · planned"]
+    gateway["Platform gateway<br/>External system"]
+    restaurant["Restaurant service<br/>Go"]
+
+    subgraph platform["Avito Kitchen"]
+        direction LR
+        api["Platform API<br/>Go · net/http"]
+        db[("Database<br/>PostgreSQL 17")]
+        api -->|SQL| db
+    end
+
+    web -->|HTTPS| gateway
+    gateway -->|Customer API| api
+    restaurant -->|Partner API| api
 ```
+
+| Связь | Протокол | Назначение |
+| --- | --- | --- |
+| Web-клиент → шлюз площадки | HTTPS, JSON | Каталог, корзина и отслеживание заказа |
+| Шлюз площадки → Platform API | HTTPS, JSON | Передаёт проверенный `X-User-ID` и закрытый ключ шлюза |
+| Сервис заведения → Platform API | HTTPS, JSON, polling | Синхронизирует меню и обрабатывает заказы по API-ключу |
+| Platform API → PostgreSQL | SQL через pgx | Транзакционная работа с меню, остатками и заказами |
 
 Основной сервис — модульный монолит. PostgreSQL является единственным источником истины для заказов и выделенных площадке остатков. Заведение не подключается к БД. Регистрация заведений доступна оператору через CLI `api provision`, а не публичный endpoint. Миграция и регистрация в Compose — одноразовые процессы из того же образа.
 
